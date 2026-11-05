@@ -81,6 +81,7 @@ do not commit `.env`.
 | `MYSQL_DATABASE` | Database name |
 | `MYSQL_USER` / `MYSQL_PASSWORD` | Application database credentials |
 | `REDIS_HOST` / `REDIS_PORT` | Redis host and port |
+| `REDIS_PASSWORD` | Optional Redis password |
 | `REDIS_TTL_SECONDS` | Redis cache TTL |
 | `DB_SYNCHRONIZE` | Whether TypeORM synchronizes the schema; keep `false` in production |
 
@@ -99,6 +100,13 @@ constraints:
 - `(id1, id2)` has a composite unique index;
 - `userID` has a unique index;
 - InnoDB provides persistence and database-level concurrency guarantees.
+
+The database uses `utf8mb4_0900_ai_ci`, which is case-insensitive and generally
+treats trailing-space differences as equivalent for `id1` and `id2`. Therefore,
+requests whose identifiers differ only by case or trailing spaces may resolve
+to the same mapping. If those values must remain distinct, use a binary or
+case-sensitive collation consistently in both `database/init.sql` and the
+entity/database configuration.
 
 ## API
 
@@ -156,6 +164,13 @@ npm run test:integration
 
 The integration test verifies UUID v4 generation, repeated-request
 consistency, and concurrent-request consistency.
+
+The integration test requires a working Docker Compose command and healthy
+MySQL and Redis containers. If Docker Compose is unavailable, the test cannot
+verify the full startup chain; run the unit and HTTP-layer tests locally and
+record the integration test as not executed rather than treating it as passed.
+The HTTP-layer tests cover `400` validation responses, successful `201`
+responses, and controlled `500` responses from the mapping service.
 
 ## Git and Security
 

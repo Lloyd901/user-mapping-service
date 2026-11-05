@@ -42,4 +42,46 @@ describe('MappingController validation', () => {
     await request(app.getHttpServer()).post('/user-mappings').send(body).expect(400);
     expect(service.resolve).not.toHaveBeenCalled();
   });
+
+  it('returns a structured validation error response', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/user-mappings')
+      .send({ id1: 'ABC123' })
+      .expect(400);
+
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        statusCode: 400,
+        message: expect.any(Array),
+        error: 'Bad Request',
+      }),
+    );
+  });
+
+  it('returns 201 with the resolved mapping', async () => {
+    service.resolve.mockResolvedValueOnce({ userID: '550e8400-e29b-41d4-a716-446655440000' });
+
+    const response = await request(app.getHttpServer())
+      .post('/user-mappings')
+      .send({ id1: 'ABC123', id2: 'XYZ456' })
+      .expect(201);
+
+    expect(response.body).toEqual({
+      userID: '550e8400-e29b-41d4-a716-446655440000',
+    });
+  });
+
+  it('returns a controlled 500 response when the database service fails', async () => {
+    service.resolve.mockRejectedValueOnce(new Error('database connection details'));
+
+    const response = await request(app.getHttpServer())
+      .post('/user-mappings')
+      .send({ id1: 'ABC123', id2: 'XYZ456' })
+      .expect(500);
+
+    expect(response.body).toEqual({
+      statusCode: 500,
+      message: 'Internal server error',
+    });
+  });
 });
