@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common';
 import { QueryFailedError, Repository } from 'typeorm';
 import { MappingCacheService } from '../src/mapping/mapping-cache.service';
 import { UserMapping } from '../src/mapping/entities/user-mapping.entity';
@@ -64,6 +65,41 @@ describe('MappingService', () => {
     const duplicateError = new QueryFailedError('INSERT', [], new Error('duplicate'));
     Object.assign(duplicateError.driverError, { code: 'ER_DUP_ENTRY' });
     repository.save.mockRejectedValue(duplicateError);
+
+    await expect(service.resolve({ id1: 'ABC123', id2: 'XYZ456' })).resolves.toEqual({
+      userID: '550e8400-e29b-41d4-a716-446655440000',
+    });
+  });
+
+  it('returns a controlled error when the concurrent winner lookup fails', async () => {
+    cache.get.mockResolvedValue(null);
+    repository.findOne
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error('database details'));
+    const duplicateError = new QueryFailedError('INSERT', [], new Error('duplicate'));
+    Object.assign(duplicateError.driverError, { code: 'ER_DUP_ENTRY' });
+    repository.save.mockRejectedValue(duplicateError);
+
+    await expect(service.resolve({ id1: 'ABC123', id2: 'XYZ456' })).rejects.toThrow(
+      'Unable to process the mapping request.',
+    );
+  });
+
+  it('returns a controlled error when the database lookup fails', async () => {
+    cache.get.mockResolvedValue(null);
+    repository.findOne.mockRejectedValue(new Error('database connection details'));
+    const result = service.resolve({ id1: 'ABC123', id2: 'XYZ456' });
+
+    await expect(result).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(result).rejects.toThrow('Unable to process the mapping request.');
+  });
+
+  it('still returns the database mapping when Redis is unavailable', async () => {
+    cache.get.mockResolvedValue(null);
+    cache.set.mockRejectedValue(new Error('Redis unavailable'));
+    repository.findOne.mockResolvedValue({
+      userID: '550e8400-e29b-41d4-a716-446655440000',
+    } as UserMapping);
 
     await expect(service.resolve({ id1: 'ABC123', id2: 'XYZ456' })).resolves.toEqual({
       userID: '550e8400-e29b-41d4-a716-446655440000',

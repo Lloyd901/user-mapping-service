@@ -1,14 +1,15 @@
 # User Mapping Service
 
-这是 Code Test 的完整 NestJS 实现。服务将 `(id1, id2)` 映射到稳定的 UUID v4 `userID`：
+This project is a NestJS implementation that maps an `(id1, id2)` pair to a
+stable UUID v4 `userID`:
 
 ```text
 (id1, id2) -> userID
 ```
 
-同一组合重复请求时始终返回同一个 `userID`。
+Repeated requests with the same pair always return the same `userID`.
 
-## 技术栈
+## Technology Stack
 
 - NestJS 11 + TypeScript
 - MySQL 8
@@ -17,76 +18,88 @@
 - Jest
 - Swagger/OpenAPI
 
-## 前置条件
+## Prerequisites
 
-- Node.js 20 或更高版本
+- Node.js 20 or later
 - npm
-- Docker Desktop（推荐，用于启动 MySQL 和 Redis）
+- Docker Desktop (recommended for running MySQL and Redis)
 
-## 快速启动
+## Quick Start
 
-1. 安装依赖：
+1. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. 复制配置：
-
-   ```bash
-   copy .env.example .env
-   ```
-
-   PowerShell 也可以使用：
+2. Copy the configuration and set local development passwords:
 
    ```powershell
    Copy-Item .env.example .env
    ```
 
-3. 启动 MySQL 和 Redis：
+   Replace `MYSQL_PASSWORD` and `MYSQL_ROOT_PASSWORD` with passwords intended
+   only for local development.
+
+3. Start MySQL, Redis, and the application:
 
    ```bash
    docker compose up -d
    ```
 
-4. 启动应用：
+   To start only the dependencies and run the application locally:
 
    ```bash
+   docker compose up -d mysql redis
    npm run start:dev
    ```
 
-应用地址为 `http://localhost:3000`，Swagger 地址为 `http://localhost:3000/docs`。
+The application is available at `http://localhost:3000`. Swagger is available
+at `http://localhost:3000/docs`.
 
-## 配置
+Inside Docker Compose, the application connects to `mysql` and `redis` by
+service name. When running locally, it uses the `localhost` settings from
+`.env`. MySQL is mapped to host port `3307` by default to avoid conflicts with
+an existing MySQL instance on port `3306`; set `MYSQL_HOST_PORT` to change it.
+The application does not provide a database password default and refuses to
+start when `MYSQL_PASSWORD` is missing.
 
-`.env.example` 不包含真实凭证。生产环境应通过部署平台的 secret/environment 管理注入配置，不要提交 `.env`。
+Compose builds the [`Dockerfile`](./Dockerfile) and waits for MySQL and Redis
+health checks before starting the application.
 
-关键配置：
+## Configuration
 
-| 变量 | 说明 |
+`.env.example` contains placeholders only. Inject production credentials
+through the deployment platform's secret or environment-variable management;
+do not commit `.env`.
+
+| Variable | Description |
 |---|---|
-| `PORT` | HTTP 端口，默认 3000 |
-| `MYSQL_HOST` / `MYSQL_PORT` | MySQL 地址和端口 |
-| `MYSQL_DATABASE` | 数据库名 |
-| `MYSQL_USER` / `MYSQL_PASSWORD` | 应用数据库账户 |
-| `REDIS_HOST` / `REDIS_PORT` | Redis 地址和端口 |
-| `REDIS_TTL_SECONDS` | 缓存 TTL |
-| `DB_SYNCHRONIZE` | 是否由 TypeORM 自动同步表结构；生产环境应为 `false` |
+| `PORT` | HTTP port, default `3000` |
+| `MYSQL_HOST` / `MYSQL_PORT` | MySQL host and port for local application runs |
+| `MYSQL_HOST_PORT` | Host port mapped to MySQL by Docker Compose, default `3307` |
+| `MYSQL_DATABASE` | Database name |
+| `MYSQL_USER` / `MYSQL_PASSWORD` | Application database credentials |
+| `REDIS_HOST` / `REDIS_PORT` | Redis host and port |
+| `REDIS_TTL_SECONDS` | Redis cache TTL |
+| `DB_SYNCHRONIZE` | Whether TypeORM synchronizes the schema; keep `false` in production |
 
-## 数据库
+## Database
 
-Docker 首次初始化时会执行 [`database/init.sql`](./database/init.sql)。表的关键约束是：
+On its first initialization, Docker runs
+[`database/init.sql`](./database/init.sql). The table has these important
+constraints:
 
-- `id1` 和 `id2` 为非空字段；
-- `(id1, id2)` 有联合唯一索引；
-- `userID` 有唯一索引；
-- 使用 InnoDB 以保证并发下的唯一性和持久性。
+- `id1` and `id2` are required;
+- `(id1, id2)` has a composite unique index;
+- `userID` has a unique index;
+- InnoDB provides persistence and database-level concurrency guarantees.
 
 ## API
 
 ### `POST /user-mappings`
 
-请求：
+Request:
 
 ```json
 {
@@ -95,7 +108,7 @@ Docker 首次初始化时会执行 [`database/init.sql`](./database/init.sql)。
 }
 ```
 
-响应：
+Response:
 
 ```json
 {
@@ -103,23 +116,59 @@ Docker 首次初始化时会执行 [`database/init.sql`](./database/init.sql)。
 }
 ```
 
-参数缺失、空字符串、非字符串或多余字段会返回 `400 Bad Request`。数据库故障返回受控的 `500 Internal Server Error`，不会暴露 SQL 或堆栈。
+Missing, blank, non-string, or unexpected fields return `400 Bad Request`.
+Database failures return a controlled `500 Internal Server Error` without
+exposing SQL statements or stack traces.
 
-## Redis 与一致性
+## Redis and Consistency
 
-Redis 只缓存 `id1` + `id2` 到 `userID` 的查询结果，设置 TTL；MySQL 是唯一永久数据源。Redis 读取或写入失败时，服务会记录警告并回退到 MySQL，因此缓存不可用不会改变正确结果。
+Redis caches `id1` + `id2` to `userID` lookups with a TTL. MySQL remains the
+only permanent source of truth. If Redis reads or writes fail, the service logs
+a warning and falls back to MySQL, so cache failures cannot change the result.
 
-服务先查询已有记录；新记录写入时依赖 MySQL 的联合唯一约束。两个相同的新请求并发时，只有一个插入成功，另一个收到唯一键冲突后重新查询获胜记录，最终返回同一个 `userID`。
+The service first checks for an existing record. For a new record, it relies on
+the composite unique constraint. If two identical new requests run
+concurrently, one insert succeeds and the other handles the duplicate-key
+error by reading the winning record. Both requests ultimately return the same
+`userID`.
 
-## 测试与构建
+## Testing and Building
 
 ```bash
 npm test
 npm run build
 ```
 
-测试覆盖新建、已有记录、缓存命中和并发重复插入场景。
+The tests cover new mappings, existing mappings, cache hits, concurrent
+duplicate inserts, database errors, Redis failures, and request validation.
 
-## Git 和安全
+The default test suite does not require external services. After starting
+Docker Compose, run the integration test against real MySQL and Redis:
 
-`.gitignore` 排除了 `.env`、依赖、构建产物、覆盖率和日志。请只提交 `.env.example`，不要提交真实密码、API key 或生产凭证。
+```powershell
+$env:RUN_INTEGRATION_TESTS = "true"
+npm test -- --runInBand test/mapping.e2e.spec.ts
+```
+
+The integration test verifies UUID v4 generation, repeated-request
+consistency, and concurrent-request consistency.
+
+## Git and Security
+
+`.gitignore` excludes `.env`, dependencies, build output, coverage, and logs.
+`.env.example` contains placeholders only. Never commit real passwords, API
+keys, or production credentials. Docker uses `npm ci` so that dependencies
+match `package-lock.json`.
+
+Run the production dependency audit with:
+
+```bash
+npm audit --omit=dev
+```
+
+The project pins patched transitive versions with npm `overrides`: Multer
+`2.5.0`, Glob `14.0.2`, and Minimatch `11.0.1`. This removes the production
+high-severity Multer denial-of-service issue and the TypeORM Glob/Minimatch
+issues without a breaking NestJS or TypeORM upgrade. Development-only audit
+findings belong to Jest and build tooling and are not included in the
+production image.

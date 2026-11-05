@@ -5,16 +5,26 @@ import { MappingModule } from './mapping/mapping.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: (env: Record<string, unknown>) => {
+        for (const name of ['MYSQL_PASSWORD']) {
+          if (typeof env[name] !== 'string' || env[name].trim() === '') {
+            throw new Error(`${name} must be provided through the environment`);
+          }
+        }
+        return env;
+      },
+    }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'mysql' as const,
-        host: config.getOrThrow<string>('MYSQL_HOST'),
+        host: config.get<string>('MYSQL_HOST', 'localhost'),
         port: Number(config.get<string>('MYSQL_PORT', '3306')),
-        username: config.getOrThrow<string>('MYSQL_USER'),
+        username: config.get<string>('MYSQL_USER', 'app'),
         password: config.getOrThrow<string>('MYSQL_PASSWORD'),
-        database: config.getOrThrow<string>('MYSQL_DATABASE'),
+        database: config.get<string>('MYSQL_DATABASE', 'user_mapping'),
         autoLoadEntities: true,
         synchronize: config.get<string>('DB_SYNCHRONIZE', 'false') === 'true',
         charset: 'utf8mb4',
