@@ -11,6 +11,7 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest --runInBand",
+    "test:integration": "node scripts/run-integration-tests.js",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "typeorm": "typeorm-ts-node-commonjs"

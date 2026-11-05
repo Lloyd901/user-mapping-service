@@ -84,6 +84,11 @@ do not commit `.env`.
 | `REDIS_TTL_SECONDS` | Redis cache TTL |
 | `DB_SYNCHRONIZE` | Whether TypeORM synchronizes the schema; keep `false` in production |
 
+At startup, `PORT`, `MYSQL_PORT`, and `REDIS_PORT` must be integers from 1
+through 65535, and `REDIS_TTL_SECONDS` must be a positive integer. Invalid
+values stop the application from starting instead of causing a later runtime
+failure.
+
 ## Database
 
 On its first initialization, Docker runs
@@ -146,8 +151,7 @@ The default test suite does not require external services. After starting
 Docker Compose, run the integration test against real MySQL and Redis:
 
 ```powershell
-$env:RUN_INTEGRATION_TESTS = "true"
-npm test -- --runInBand test/mapping.e2e.spec.ts
+npm run test:integration
 ```
 
 The integration test verifies UUID v4 generation, repeated-request

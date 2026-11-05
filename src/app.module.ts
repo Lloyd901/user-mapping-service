@@ -1,20 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { validateEnvironment } from './config.validation';
 import { MappingModule } from './mapping/mapping.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      validate: (env: Record<string, unknown>) => {
-        for (const name of ['MYSQL_PASSWORD']) {
-          if (typeof env[name] !== 'string' || env[name].trim() === '') {
-            throw new Error(`${name} must be provided through the environment`);
-          }
-        }
-        return env;
-      },
+      validate: validateEnvironment,
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
